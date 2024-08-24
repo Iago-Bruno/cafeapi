@@ -4,3 +4,4 @@ temp.txt
 __pycache__
 *.pyc
 hello_flask.log
+.env

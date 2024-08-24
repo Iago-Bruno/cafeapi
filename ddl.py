@@ -1,9 +1,20 @@
+import os
+import psycopg2
 import sqlite3
-from Globals import DATABASE_NAME
+from dotenv import load_dotenv
 
-connection = sqlite3.connect(DATABASE_NAME)
+connection = psycopg2.connect(
+            database=os.environ.get('DATABASE_NAME'),  
+            user=os.environ.get('DATABASE_USER'), 
+            password=os.environ.get('DATABASE_PASSWORD'),  
+            host=os.environ.get('DATABASE_HOST'),
+            port=os.environ.get('DATABASE_PORT')
+        ) 
 
 with open('schema.sql') as f:
-    connection.executescript(f.read())
+    cursor = connection.cursor()
+    cursor.execute(f.read())
+    # connection.executescript(f.read())
 
+connection.commit()
 connection.close()

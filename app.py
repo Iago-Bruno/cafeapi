@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, g
+from psycopg2.extras import RealDictCursor
 
 from helpers.database.__init_db import get_db_connection
 from helpers.logging import logger
@@ -7,42 +8,51 @@ app = Flask(__name__)
 
 # Padronizando requests para endpoint GET
 def select_query_db(query, args=()):
-    cursor = get_db_connection().execute(query, args)
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(query, args)
     result_set = cursor.fetchall()
     cursor.close()
+    connection.close()
     return result_set
 
 # Padronizando requests para endpoint POST e UPDATE
 def insert_update_query_db(query, args=()):
     connection = get_db_connection()
     cursor = connection.cursor()
-    result_set = cursor.execute(query, args)
+    cursor.execute(query, args)
+    result_set_id = cursor.fetchone()['id']
     connection.commit()
     cursor.close()
-    return result_set
+    connection.close()
+    return result_set_id
 
 def delete_query_db(query, args=()):
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(query, args)
+    deleted_user_id = cursor.fetchone()
     connection.commit()
-    rows_affected = cursor.rowcount
     cursor.close()
-    return rows_affected
+    connection.close()
+    return deleted_user_id
 
 # Busca todos os usuários
 def get_usuarios():
     # Usando da função padrão para requests GET
     result_set = select_query_db('SELECT * FROM tb_usuario')
-    # Retornando os usuário em Json atravez do dict function
-    return [dict(data) for data in result_set]
+    # Retornando os usuário em Json
+    return result_set
 
 # Busca um usuário pelo id
 def get_usuario_by_id(user_id):
     # Usando da função padrão para requests GET
-    result_set = select_query_db(f'SELECT * FROM tb_usuario WHERE id={user_id}')
-    # Retornando os usuário em Json atravez do dict function
-    return [dict(data) for data in result_set]
+    result_set = select_query_db(
+        f'''SELECT * FROM tb_usuario 
+        WHERE id={user_id}'''
+    )
+    # Retornando os usuário em Json
+    return result_set
 
 # Insere um novo usuário ao banco
 def set_usuario(data):
@@ -53,11 +63,13 @@ def set_usuario(data):
     # Usando da função padrão para requests POST
     # Persistir os dados no banco.
     result_set = insert_update_query_db(
-        'INSERT INTO tb_usuario(nome, nascimento) VALUES (?, ?)',
+        '''INSERT INTO tb_usuario (nome, nascimento)
+        VALUES (%s, %s)
+        RETURNING id''',
         (nome, nascimento)
     )
 
-    data['id'] = result_set.lastrowid
+    data['id'] = result_set
     # Retornar o usuário criado.
     return {"message": "Successfully created user", "data": data}
 
@@ -69,7 +81,9 @@ def update_usuario_by_id(data, user_id):
 
     # Persistir os dados no banco.
     result_set = insert_update_query_db(
-        'UPDATE tb_usuario SET nome=?, nascimento=? WHERE id=?',
+        '''UPDATE tb_usuario SET nome=%s, nascimento=%s 
+        WHERE id=%s
+        RETURNING id''',
         (nome, nascimento, user_id)
     )
 
@@ -79,13 +93,15 @@ def update_usuario_by_id(data, user_id):
 
 def delete_usuario(user_id):
     # Persistir os dados no banco.
-    rows_deleted = delete_query_db(
-        'DELETE FROM tb_usuario WHERE id=?',
+    result_set = delete_query_db(
+        '''DELETE FROM tb_usuario 
+        WHERE id=%s 
+        RETURNING ID''',
         (user_id,)
     )
     
     # Retornar o usuário atualizado.
-    if rows_deleted > 0:
+    if result_set != None:
         return {"message": f"Usuário {user_id} excluído com sucesso"}
 
     # Retorna caso não encontre um usuário
